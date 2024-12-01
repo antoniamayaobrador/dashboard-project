@@ -1,10 +1,10 @@
 # app/database/config.py
 DATABASE_CONFIG = {
-    "dbname": "youtube_analysis",  # Reemplaza con el nombre de tu base de datos
-    "user": "toniamayaobrador",       # Reemplaza con tu usuario de PostgreSQL
-    "password": "Amaya992",      # Reemplaza con tu contraseña de PostgreSQL
-    "host": "localhost",            # Usa "localhost" si está en tu máquina local
-    "port": 5432                    # Puerto por defecto de PostgreSQL
+    "dbname": "youtube_analysis", 
+    "user": "toniamayaobrador",       
+    "password": "Amaya992",     
+    "host": "localhost",            
+    "port": 5432                    
 }
 
 import psycopg2

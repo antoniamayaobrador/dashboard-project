@@ -440,7 +440,7 @@ const Dashboard = ({ data }) => {
                         <p style={{ marginTop: "1rem" }}>{highlightBrands(latestVideo.title)}</p>
                     </div>
                 )}
-                <div style={{
+              <div style={{
     flex: "1",
     padding: "1rem",
     borderRadius: "8px",
@@ -459,17 +459,30 @@ const Dashboard = ({ data }) => {
                         <th onClick={() => handleSort("published_date")} style={{ cursor: "pointer", padding: "0.5rem" }}>Fecha</th>
                         <th onClick={() => handleSort("views")} style={{ cursor: "pointer", padding: "0.5rem" }}>Vistas</th>
                         <th onClick={() => handleSort("likes")} style={{ cursor: "pointer", padding: "0.5rem" }}>Likes</th>
-                        <th onClick={() => handleSort("comments")} style={{ cursor: "pointer", padding: "0.5rem" }}>Comentarios</th>
+                        <th onClick={() => handleSort("comments_count")} style={{ cursor: "pointer", padding: "0.5rem" }}>Comentarios</th>
+                        <th onClick={() => handleSort("average_stars")} style={{ cursor: "pointer", padding: "0.5rem" }}>Valoración Media</th>
                     </tr>
                 </thead>
                 <tbody>
                     {sortedVideos.map((video, index) => (
                         <tr key={index}>
-                            <td style={{ padding: "0.5rem" }}>{highlightBrands(video.title)}</td>
+                            <td style={{ padding: "0.5rem" }}>
+                                <a 
+                                    href={`https://www.youtube.com/watch?v=${video.videoId}`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer" 
+                                    style={{ textDecoration: "none", color: "#333" }}
+                                >
+                                    {highlightBrands(video.title)}
+                                </a>
+                            </td>
                             <td style={{ padding: "0.5rem" }}>{new Date(video.published_date).toLocaleString()}</td>
                             <td style={{ padding: "0.5rem" }}>{video.views}</td>
                             <td style={{ padding: "0.5rem" }}>{video.likes}</td>
-                            <td style={{ padding: "0.5rem" }}>{video.comments}</td>
+                            <td style={{ padding: "0.5rem" }}>{video.comments_count}</td>
+                            <td style={{ padding: "0.5rem" }}>
+                                {typeof video.average_stars === "number" ? video.average_stars.toFixed(2) : "N/A"}
+                            </td>
                         </tr>
                     ))}
                 </tbody>
@@ -480,14 +493,15 @@ const Dashboard = ({ data }) => {
                 color: "#333",
                 fontStyle: "italic",
             }}>
-                Esta tabla muestra los 10 últimos vídeos del canal. Las marcas objetivo están en negrita. Puede ordenarse de forma ascendente o descendiente clicando sobre Título, Fecha, Visitas, Likes y Comentarios.
+                Esta tabla muestra los 10 últimos vídeos del canal. Las marcas objetivo están en negrita. Puede ordenarse de forma ascendente o descendiente clicando sobre Título, Fecha, Visitas, Likes, Comentarios y Valoración Media.
+                La valoración media se ha generado usando un modelo de análisis de sentimiento a partir de los útlimos 25 comentarios en el vídeo. 
             </p>
         </>
     )}
 </div>
 
-            </div>
 
+            </div>
             <div style={{
     display: "grid",
     gridTemplateColumns: "1fr 0.5fr 0.5fr", // Three columns
@@ -495,7 +509,12 @@ const Dashboard = ({ data }) => {
     alignItems: "start",
 }}>
     {/* First Column: Summary, Brands, and Historical Word Count */}
-    <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
+    <div style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "2rem", // Espacio entre los elementos
+    }}>
+        {/* Resumen del Video */}
         {latestVideo?.summary && (
             <div style={{
                 padding: "1rem",
@@ -505,13 +524,56 @@ const Dashboard = ({ data }) => {
             }}>
                 <h3>Resumen del Video</h3>
                 <p>{latestVideo.summary}</p>
+                <div style={{
+                    marginTop: "1rem",
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: "2rem",
+                }}>
+                    <span style={{
+                        alignSelf: "center",
+                        fontSize: "0.9rem",
+                        color: "#333",
+                    }}>¿Le ha resultado útil?</span>
+                    <button
+                        onClick={() => handleSummaryFeedback(true)}
+                        style={{
+                            padding: "0.5rem 1rem",
+                            backgroundColor: "#333",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                        }}
+                    >Sí</button>
+                    <button
+                        onClick={() => handleSummaryFeedback(false)}
+                        style={{
+                            padding: "0.5rem 1rem",
+                            backgroundColor: "#333",
+                            color: "white",
+                            border: "none",
+                            borderRadius: "4px",
+                            cursor: "pointer",
+                        }}
+                    >No</button>
+                </div>
+                {showSummaryFeedback && (
+                    <p style={{
+                        marginTop: "1rem",
+                        color: "#333",
+                        fontStyle: "italic",
+                    }}>Gracias por su valoración.</p>
+                )}
             </div>
         )}
+
         <div style={{
             padding: "1rem",
             borderRadius: "8px",
             background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
             boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
+            gap : '2rem'
         }}>
             <h3>Marcas Detectadas</h3>
             {latestVideo?.brands?.length > 0 ? (

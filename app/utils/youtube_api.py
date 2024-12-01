@@ -4,12 +4,17 @@ import requests
 from dotenv import load_dotenv
 from app.utils.audio_processing import procesar_video
 from app.utils.wordcount_plot import generar_grafico_wordcount
-from app.database.database_service import insert_video_wordcount  # Importa tu función de escritura
+from app.database.database_service import insert_video_wordcount  
+from app.utils.sentiment_analysis import analyze_comments
+
 
 
 # Cargar variables de entorno
 load_dotenv()
 API_KEY = os.getenv("YOUTUBE_API_KEY")
+
+
+
 
 def fetch_channel_id_from_handle(channel_handle):
     """
@@ -49,6 +54,39 @@ def fetch_channel_id_from_html(channel_url):
     except Exception as e:
         print("Error fetching channelId from HTML:", e)
         return None
+
+def fetch_video_comments(video_id, max_comments=25):
+    """
+    Obtiene hasta `max_comments` comentarios de un video de YouTube usando la API.
+    """
+    try:
+        comments = []
+        next_page_token = None
+        while len(comments) < max_comments:
+            comments_url = f"https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId={video_id}&key={API_KEY}&maxResults=50"
+            if next_page_token:
+                comments_url += f"&pageToken={next_page_token}"
+
+            response = requests.get(comments_url)
+            if response.status_code != 200:
+                raise Exception(f"Error fetching comments: {response.text}")
+
+            comments_data = response.json()
+            for item in comments_data.get("items", []):
+                comment = item["snippet"]["topLevelComment"]["snippet"]["textDisplay"]
+                comments.append(comment)
+                if len(comments) >= max_comments:
+                    break
+
+            next_page_token = comments_data.get("nextPageToken")
+            if not next_page_token:
+                break  # No hay más páginas de comentarios
+
+        return comments[:max_comments]
+    except Exception as e:
+        print(f"Error fetching comments for video {video_id}:", e)
+        return []
+
 
 def fetch_channel_videos(channel_url):
     """
@@ -95,16 +133,40 @@ def fetch_channel_videos(channel_url):
             video_metrics_url = f"https://www.googleapis.com/youtube/v3/videos?part=statistics&id={video_id}&key={API_KEY}"
             video_metrics_response = requests.get(video_metrics_url)
 
+            video_data = {
+                "title": video_title,
+                "videoId": video_id,
+                "published_date": published_date,
+                "views": 0,
+                "likes": 0,
+                "comments_count": 0,
+                "comments": [], 
+                "average_stars": None,
+            }
+
             if video_metrics_response.status_code == 200:
                 video_metrics = video_metrics_response.json().get("items", [{}])[0].get("statistics", {})
-                videos.append({
-                    "title": video_title,
-                    "videoId": video_id,
-                    "published_date": published_date,
+                video_data.update({
                     "views": int(video_metrics.get("viewCount", 0)),
                     "likes": int(video_metrics.get("likeCount", 0)),
-                    "comments": int(video_metrics.get("commentCount", 0)),
+                    "comments_count": int(video_metrics.get("commentCount", 0)),
                 })
+
+            # Recoger comentarios
+            raw_comments = fetch_video_comments(video_id, max_comments=25)
+            analyzed_comments = analyze_comments(raw_comments)  # Añadir análisis de sentimiento
+
+            # Calcular la media de estrellas
+            if analyzed_comments:
+                video_data["average_stars"] = round(
+                    sum(comment["stars"] for comment in analyzed_comments) / len(analyzed_comments), 2
+                )
+
+            # Agregar comentarios analizados
+            video_data["comments"] = analyzed_comments
+
+            # Agregar a la lista de videos
+            videos.append(video_data)
 
         # Procesar el último video
         if videos:
@@ -120,12 +182,12 @@ def fetch_channel_videos(channel_url):
 
                 # Guardar wordcount en la base de datos
                 insert_video_wordcount(
-                video_id=latest_video["videoId"],
-                channel_name=channel_data["items"][0]["snippet"]["title"],
-                video_title=latest_video["title"],
-                wordcount=latest_video["wordcount"],
-                total_palabras=latest_video["total_palabras"],
-            )
+                    video_id=latest_video["videoId"],
+                    channel_name=channel_data["items"][0]["snippet"]["title"],
+                    video_title=latest_video["title"],
+                    wordcount=latest_video["wordcount"],
+                    total_palabras=latest_video["total_palabras"],
+                )
 
                 # Generar gráfico de barras para el wordcount
                 if latest_video["wordcount"]:
