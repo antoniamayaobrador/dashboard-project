@@ -45,6 +45,8 @@ def truncate_at_last_period(text: str) -> str:
         return text[:last_period_index + 1]  # Incluimos el punto
     return text
 
+
+
 @router.post("/api/define")
 async def search_definition(request: SearchRequest):
     try:

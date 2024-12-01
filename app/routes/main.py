@@ -1,12 +1,25 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from typing import Any
 from app.utils.youtube_api import fetch_channel_videos
-from app.utils.search_llm import router as search_router
+from app.utils.query_llm import generate_sql_from_question, execute_sql_query
+from app.utils.search_llm import router as search_router  # Importación correcta
 from app.database.database_service import (
     get_wordcount_summary,
     get_historical_wordcount_by_channel,
     save_feedback
 )
+import logging
+import sys
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger(__name__)
+
 
 # Crear el enrutador principal
 router = APIRouter()
@@ -26,6 +39,12 @@ class FeedbackData(BaseModel):
     type: str
     result: bool
     content: str 
+
+class QueryRequest(BaseModel):
+    question: str
+
+class QueryResponse(BaseModel):
+    results: Any  # Cambia Any a un tipo más específico si conoces la estructura de los resultados
 
 @router.post("/api/analyze")
 async def analyze_channel(request: AnalyzeRequest):
@@ -120,6 +139,27 @@ async def save_user_feedback(feedback: FeedbackData):
         return {"message": "Feedback guardado exitosamente."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al guardar el feedback: {str(e)}")
+    
+
+
+import traceback
+
+@router.post("/api/query")
+async def query_llm(request: QueryRequest):
+    try:
+        logger.info(f"Recibida pregunta: {request.question}")
+        
+        # Generar consulta SQL
+        sql_query = generate_sql_from_question(request.question)
+        
+        # Ejecutar consulta SQL
+        results = execute_sql_query(sql_query)
+        
+        return {"query": sql_query, "results": results}
+    except Exception as e:
+        logger.error(f"Error en el proceso de consulta: {str(e)}")
+        logger.debug(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
 
 # Incluir las rutas del search_llm
 router.include_router(search_router, prefix="")

@@ -91,6 +91,10 @@ const Dashboard = ({ data }) => {
     const [showDefinitionFeedback, setShowDefinitionFeedback] = useState(false);
     const [showSummaryFeedback, setShowSummaryFeedback] = useState(false);
     const [historicalWordCount, setHistoricalWordCount] = useState([]);
+    const [queryInput, setQueryInput] = useState(""); // Estado para almacenar el texto ingresado por el usuario
+    const [queryResult, setQueryResult] = useState(""); // Estado para almacenar el resultado de la consulta
+    const [isQuerying, setIsQuerying] = useState(false); // Estado para manejar el estado de carga de la consulta
+
     
     
 
@@ -211,6 +215,32 @@ const Dashboard = ({ data }) => {
         }
     };
     
+    const handleQuery = async () => {
+        if (!queryInput.trim()) {
+            setQueryResult("Por favor, escribe una consulta en lenguaje natural.");
+            return;
+        }
+    
+        setIsQuerying(true); // Cambia a estado de carga
+        setQueryResult("Procesando la consulta, por favor espera...");
+    
+        try {
+            const response = await axios.post("http://localhost:8000/api/query", {
+                question: queryInput,
+            });
+    
+            if (response.data && response.data.results) {
+                setQueryResult(JSON.stringify(response.data.results, null, 2)); // Formatea los resultados como JSON legible
+            } else {
+                setQueryResult("No se encontraron resultados para la consulta.");
+            }
+        } catch (error) {
+            console.error("Error realizando la consulta:", error);
+            setQueryResult("Ocurrió un error al procesar la consulta.");
+        } finally {
+            setIsQuerying(false); // Finaliza el estado de carga
+        }
+    };
     
 
     const videoChartRef = useRef(null);
@@ -321,6 +351,15 @@ const Dashboard = ({ data }) => {
                     <h2>Canal: {channel_title}</h2>
                     <h3>Descripción:</h3>
                     <p>{description}</p>
+
+                    <p style={{
+                marginTop: "1rem",
+                fontSize: "0.9rem",
+                color: "#333",
+                fontStyle: "italic",
+            }}>
+                Descripción del canal de YouTube analizado. 
+            </p>
                 </div>
                 <div style={{
                     flex: "1",
@@ -415,6 +454,15 @@ const Dashboard = ({ data }) => {
                             )}
                         </div>
                     )}
+
+                <p style={{
+                marginTop: "1rem",
+                fontSize: "0.9rem",
+                color: "#333",
+                fontStyle: "italic",
+            }}>
+                Este buscador de términos genera respuestas a búsquedas terminológicas usando inteligencia artificial. 
+            </p>
                 </div>
             </div>
 
@@ -502,27 +550,19 @@ const Dashboard = ({ data }) => {
 
 
             </div>
-            <div style={{
-    display: "grid",
-    gridTemplateColumns: "1fr 0.5fr 0.5fr", // Three columns
-    gap: "2rem",
-    alignItems: "start",
-}}>
-    {/* First Column: Summary, Brands, and Historical Word Count */}
+{/* Third Row: Summary and Query Box */}
+<div style={{ display: "flex", gap: "2rem", marginBottom: "2rem" }}>
+    {/* Summary Section */}
     <div style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "2rem", // Espacio entre los elementos
+        flex: "1",
+        padding: "1rem",
+        borderRadius: "8px",
+        background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
+        boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
     }}>
-        {/* Resumen del Video */}
-        {latestVideo?.summary && (
-            <div style={{
-                padding: "1rem",
-                borderRadius: "8px",
-                background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
-                boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
-            }}>
-                <h3>Resumen del Video</h3>
+        <h3>Resumen del Video</h3>
+        {latestVideo?.summary ? (
+            <>
                 <p>{latestVideo.summary}</p>
                 <div style={{
                     marginTop: "1rem",
@@ -565,36 +605,151 @@ const Dashboard = ({ data }) => {
                         fontStyle: "italic",
                     }}>Gracias por su valoración.</p>
                 )}
+            </>
+        ) : (
+            <p>No hay resumen disponible para este video.</p>
+        )}
+        <p style={{
+        marginTop: "1rem",
+        fontSize: "0.9rem",
+        color: "#333",
+        fontStyle: "italic",
+        }}>
+        Los resumenes del contenido del vídeo son generados usando inteligencia artificial en base a la transcripción de los mismos. </p>
+    </div>
+
+    {/* Query Box */}
+    <div style={{
+        flex: "1",
+        padding: "1rem",
+        borderRadius: "8px",
+        background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
+        boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
+    }}>
+        <h3>Consultas en Lenguaje Natural</h3>
+        <input
+            type="text"
+            value={queryInput}
+            onChange={(e) => setQueryInput(e.target.value)}
+            placeholder="Escribe tu consulta en lenguaje natural..."
+            style={{
+                width: "95%",
+                padding: "0.5rem",
+                marginBottom: "1rem",
+                borderRadius: "4px",
+                border: "1px solid #ccc",
+            }}
+        />
+        <button
+            onClick={handleQuery}
+            disabled={isQuerying}
+            style={{
+                padding: "0.5rem 1rem",
+                backgroundColor: "#333",
+                color: "white",
+                border: "none",
+                borderRadius: "4px",
+                cursor: isQuerying ? "wait" : "pointer",
+                opacity: isQuerying ? 0.7 : 1,
+            }}
+        >
+            {isQuerying ? "Consultando..." : "Consultar"}
+        </button>
+        {queryResult && (
+            <div style={{
+                marginTop: "1rem",
+                padding: "0.5rem",
+                borderRadius: "4px",
+                backgroundColor: "#f9f9f9",
+            }}>
+                <strong>Resultados:</strong>
+                <pre style={{
+                    marginTop: "0.5rem",
+                    background: "#f7f7f7",
+                    padding: "0.5rem",
+                    borderRadius: "4px",
+                    whiteSpace: "pre-wrap",
+                    wordWrap: "break-word",
+                }}>
+                    {queryResult}
+                </pre>
             </div>
         )}
+        
+        <p style={{
+        marginTop: "1rem",
+        fontSize: "0.9rem",
+        color: "#333",
+        fontStyle: "italic",
+        }}>
+        Este sistema permite consultar la base de datos sin conocimientos previos de lenguajes de consulta. </p>
+    </div>
+</div>
 
+{/* Fourth Row: Detected Brands, Word Counts, and Graphs */}
+<div style={{ display: "flex", gap: "2rem" }}>
+    {/* Left Column: Detected Brands */}
+    <div style={{
+        flex: "0.5",
+        padding: "1rem",
+        borderRadius: "8px",
+        background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
+        boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
+    }}>
+        <h3>Marcas Detectadas</h3>
+        {latestVideo?.brands?.length > 0 ? (
+            <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
+                <thead style={{ backgroundColor: "#e9e9e9" }}>
+                    <tr>
+                        <th style={{ padding: "0.5rem" }}>Marca</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {latestVideo.brands.map((brand, index) => (
+                        <tr key={index}>
+                            <td style={{ padding: "0.5rem" }}>{brand}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        ) : (
+            <p>No se detectaron marcas en este video.</p>
+        )}
+    </div>
+
+    {/* Center Column: Word Counts */}
+    <div style={{ flex: "1", display: "flex", flexDirection: "row", gap: "1.5rem" }}>
+        {/* Video Word Count */}
         <div style={{
             padding: "1rem",
             borderRadius: "8px",
             background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
             boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
-            gap : '2rem'
         }}>
-            <h3>Marcas Detectadas</h3>
-            {latestVideo?.brands?.length > 0 ? (
+            <h3>Conteo de Palabras del Video</h3>
+            {latestVideo?.wordcount ? (
                 <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
                     <thead style={{ backgroundColor: "#e9e9e9" }}>
                         <tr>
-                            <th style={{ padding: "0.5rem" }}>Marca</th>
+                            <th style={{ padding: "0.5rem" }}>Palabra</th>
+                            <th style={{ padding: "0.5rem" }}>Conteo</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {latestVideo.brands.map((brand, index) => (
+                        {latestVideo.wordcount.map(([word, count], index) => (
                             <tr key={index}>
-                                <td style={{ padding: "0.5rem" }}>{brand}</td>
+                                <td style={{ padding: "0.5rem" }}>{word}</td>
+                                <td style={{ padding: "0.5rem" }}>{count}</td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             ) : (
-                <p>No se detectaron marcas en este video.</p>
+                <p>No hay datos de conteo disponibles.</p>
             )}
         </div>
+
+        {/* Channel Word Count */}
         <div style={{
             padding: "1rem",
             borderRadius: "8px",
@@ -625,8 +780,9 @@ const Dashboard = ({ data }) => {
         </div>
     </div>
 
-    {/* Second Column: Word Count Table for Video */}
-    <div>
+    {/* Right Column: Graphs */}
+    <div style={{ flex: "2", display: "flex", flexDirection: "column", gap: "1.5rem" }}>
+        {/* Video Word Count Graph */}
         {latestVideo?.wordcount && (
             <div style={{
                 padding: "1rem",
@@ -634,109 +790,39 @@ const Dashboard = ({ data }) => {
                 background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
                 boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
             }}>
-                <h3>Conteo de Palabras del Video</h3>
-                <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
-                    <thead style={{ backgroundColor: "#e9e9e9" }}>
-                        <tr>
-                            <th style={{ padding: "0.5rem" }}>Palabra</th>
-                            <th style={{ padding: "0.5rem" }}>Conteo</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {latestVideo.wordcount.map(([word, count], index) => (
-                            <tr key={index}>
-                                <td style={{ padding: "0.5rem" }}>{word}</td>
-                                <td style={{ padding: "0.5rem" }}>{count}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
+                <h3>Gráfico de Conteo de Palabras del Video</h3>
+                <div style={{ height: "300px", position: "relative" }}>
+                    <canvas id="wordcountChart" style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "block",
+                    }} />
+                </div>
+            </div>
+        )}
+
+        {/* Channel Word Count Graph */}
+        {historicalWordCount?.length > 0 && (
+            <div style={{
+                padding: "1rem",
+                borderRadius: "8px",
+                background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
+                boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
+            }}>
+                <h3>Gráfico de Conteo de Palabras del Canal</h3>
+                <div style={{ height: "300px", position: "relative" }}>
+                    <canvas id="channelWordcountChart" style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "block",
+                    }} />
+                </div>
             </div>
         )}
     </div>
-
-    <div style={{
-    display: "flex",
-    flexDirection: "column",
-    gap: "2rem", 
-    width: "100%",
-    maxWidth: "800px", 
-    margin: "0 auto", 
-    padding: "0", 
-}}>
-    {latestVideo?.wordcount && (
-        <div style={{
-            width: "96%",
-            padding: "16px",
-            borderRadius: "8px",
-            background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
-            boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
-        }}>
-            <div style={{ marginBottom: "8px" }}>
-                <h3 style={{
-                    fontSize: "18px",
-                    fontWeight: "600",
-                }}>
-                    Gráfico de Conteo de Palabras del Video
-                </h3>
-            </div>
-            <div style={{
-                overflowX: "auto", // Equivalent to overflow-x-auto
-            }}>
-                <div style={{
-                    minWidth: "600px", // Equivalent to min-w-[600px]
-                    height: "300px", // Equivalent to h-[300px]
-                    position: "relative",
-                }}>
-                    <canvas id="wordcountChart" style={{
-                        width: "80%",
-                        height: "100%",
-                        display: "block",
-                    }} />
-                </div>
-            </div>
-        </div>
-    )}
-
-    {historicalWordCount?.length > 0 && (
-        <div style={{
-            width: "96%",
-            padding: "16px",
-            borderRadius: "8px",
-            background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
-            boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
-        }}>
-            <div style={{ marginBottom: "8px" }}>
-                <h3 style={{
-                    fontSize: "18px",
-                    fontWeight: "600",
-                }}>
-                    Gráfico de Conteo de Palabras del Canal
-                </h3>
-            </div>
-            <div style={{
-                overflowX: "auto", 
-            }}>
-                <div style={{
-                    minWidth: "auto", 
-                    height: "300px", 
-                    position: "relative",
-                }}>
-                    <canvas id="channelWordcountChart" style={{
-                        width: "80%",
-                        height: "100%",
-                        display: "block",
-                    }} />
-                </div>
-            </div>
-        </div>
-    )}
 </div>
 
-
 </div>
-
-        </div>
     );
 };
 
