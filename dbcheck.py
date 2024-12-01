@@ -28,3 +28,5 @@ if __name__ == "__main__":
 
     print("\n=== Mostrando tabla 'wordcount' ===")
     mostrar_tabla("wordcount")
+
+

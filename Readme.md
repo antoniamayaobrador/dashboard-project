@@ -3,7 +3,7 @@ Proyecto: Dashboard de Análisis de Videos y Feedback
 
 Descripción del Proyecto
 
-Este proyecto es un dashboard interactivo que permite analizar videos de un canal, generar resúmenes, detectar marcas mencionadas y realizar análisis de conteo de palabras. Incluye un sistema de feedback donde los usuarios pueden calificar la utilidad de los resúmenes y definiciones generadas.
+Este proyecto es un dashboard interactivo que permite analizar videos de un canal, generar resúmenes, detectar marcas mencionadas y realizar análisis de conteo de palabras. Incluye un sistema de feedback donde los usuarios pueden calificar la utilidad de los resúmenes y definiciones generadas. Está planteado desde la idea una agencia hipotética de influencer marketing que necesita analizar diferentes influencers del ámbito de la perfumería. 
 
 Características Principales
 
@@ -104,10 +104,7 @@ Contribuciones
 
 Las contribuciones son bienvenidas. Por favor, abre un issue o envía un pull request para nuevas ideas o mejoras.
 
-
-Licencia
-Este proyecto está licenciado bajo la licencia MIT.
-
 Autor
-Creado por Antoni Amaya Obrador.
+Creado por Antoni Amaya Obrador. 
+2024. 
 
