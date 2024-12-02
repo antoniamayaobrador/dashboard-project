@@ -1,3 +1,4 @@
+// Footer.js
 import React from 'react';
 
 const Footer = () => {
@@ -11,7 +12,10 @@ const Footer = () => {
                 padding: '2rem',
                 backgroundColor: '#333',
                 color: 'white',
-                marginTop: '2rem',
+                marginTop: 'auto', // Cambiado de 2rem a auto para que se pegue al fondo
+                width: '100%',
+                boxSizing: 'border-box',
+                flexShrink: 0, // Evita que el footer se encoja
             }}
         >
             <div style={{ textAlign: 'center', marginBottom: '1rem' }}>

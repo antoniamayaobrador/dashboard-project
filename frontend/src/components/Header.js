@@ -1,3 +1,4 @@
+// Header.js
 import React from 'react';
 
 const Header = () => {
@@ -10,22 +11,35 @@ const Header = () => {
                 padding: '2rem',
                 backgroundColor: '#333',
                 color: 'white',
-                height: '80px', // Adjust for a taller header
+                height: '80px',
+                position: 'relative' 
             }}
         >
-            <h1 style={{ margin: '0', padding: '0', fontSize: '1.5rem' }}>
-                YouTube Influencer Marketing Analytics
+            <h1 style={{ 
+                position: 'absolute', 
+                left: '50%', 
+                transform: 'translateX(-50%)', 
+                margin: '0',
+                padding: '0',
+                fontSize: '1.5rem',
+                fontFamily: 'Roboto, sans-serif',
+                color: 'white',
+                fontWeight: '400'
+            }}>
+                YouTube Influencer Marketing Analytics Tool
             </h1>
+            <div style={{ width: '100px' }}></div> {/* Espaciador izquierdo */}
             <button
                 onClick={() => (window.location.href = 'mailto:influencermarketingyoutubetool@gmail.com')}
                 style={{
                     padding: '0.5rem 1rem',
-                    backgroundColor: '#d3d3d3', // Light gray background
-                    color: '#000', // Black text
+                    backgroundColor: '#d3d3d3',
+                    color: '#000',
                     border: 'none',
                     borderRadius: '5px',
                     cursor: 'pointer',
                     fontSize: '1rem',
+                    zIndex: 1 
                 }}
             >
                 Contacto

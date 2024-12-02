@@ -25,8 +25,8 @@ const PERFUME_BRANDS = [
     "The House of Oud", "The Merchant of Venice", "Von Eusersdorff", "Widian", "Xerjoff",
     "Abel", "Acca Kappa", "Acqua dell'Elba", "Aedes de Venustas", "Affinessence",
     "Alyson Oldoini", "Angela Ciampagna", "Annick Goutal", "Antonio Alessandria", "April Aromatics",
-    "Areej Le Doré", "Armaf", "Atelier des Ors", "Berdoues", "Bois 1920", "Croxatto"
-];
+    "Areej Le Doré", "Armaf", "Atelier des Ors", "Berdoues", "Bois 1920", "Croxatto", "Cartier", "Bentley"
+]; 
 
 const Dashboard = ({ data }) => {
     if (!data) {
@@ -339,6 +339,9 @@ const Dashboard = ({ data }) => {
             fontFamily: "Roboto, sans-serif",
             minHeight: "100vh",
             margin: '0',
+            borderRadius: '15px',     // Bordes redondeados en las 4 esquinas
+            marginTop: '20px',        // Espacio entre el Form y el Dashboard
+            marginBottom: '20px',
         }}>
             <div style={{ display: "flex", gap: "2rem", marginBottom: "2rem" }}>
                 <div style={{
@@ -497,7 +500,7 @@ const Dashboard = ({ data }) => {
 }}>
     <h3>Últimos Videos</h3>
     {sortedVideos.length === 0 ? (
-        <p>No se encontraron videos para este canal.</p>
+        <p>Analiza un canal para ver la información de los últimos vídeos.</p>
     ) : (
         <>
             <table style={{ width: "100%", textAlign: "left", borderCollapse: "collapse" }}>
@@ -607,7 +610,7 @@ const Dashboard = ({ data }) => {
                 )}
             </>
         ) : (
-            <p>No hay resumen disponible para este video.</p>
+            <p>Analiza un canal para crear el resumen del último vídeo.</p>
         )}
         <p style={{
         marginTop: "1rem",
@@ -713,7 +716,7 @@ const Dashboard = ({ data }) => {
                 </tbody>
             </table>
         ) : (
-            <p>No se detectaron marcas en este video.</p>
+            <p>Analiza un canal para buscar marcas en el vídeo.</p>
         )}
     </div>
 
@@ -745,7 +748,7 @@ const Dashboard = ({ data }) => {
                     </tbody>
                 </table>
             ) : (
-                <p>No hay datos de conteo disponibles.</p>
+                <p>Analiza un canal para ver los gráficos.</p>
             )}
         </div>
 
@@ -775,7 +778,7 @@ const Dashboard = ({ data }) => {
                     </tbody>
                 </table>
             ) : (
-                <p>No hay datos históricos disponibles.</p>
+                <p>Analiza un canal para ver los gráficos.</p>
             )}
         </div>
     </div>
