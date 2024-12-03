@@ -161,7 +161,6 @@ const ChannelCard = ({ index, channel, addChannelData, isActive, setActiveSlot }
                             
                         }}
                     >
-                        Añadir canal
                     </button>
                 </div>
             )}

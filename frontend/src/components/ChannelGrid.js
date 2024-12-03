@@ -57,10 +57,10 @@ const ChannelGrid = ({ channels, addChannelData, activeSlot, setActiveSlot }) =>
                     fontSize: '0.9rem',
                     lineHeight: '1.6'
                 }}>
-                    <li>Selecciona un slot vacío (marcado con +)</li>
-                    <li>Pega la URL del canal de YouTube a analizar</li>
-                    <li>Haz clic en "Analizar" y espera unos minutos</li>
-                    <li>Explora las diferentes secciones del análisis:
+                    <li>Seleccione un slot vacío (marcado con +)</li>
+                    <li>Pegue la URL del canal de YouTube a analizar</li>
+                    <li>Haga clic en "Analizar" y espera unos minutos</li>
+                    <li>Explore las diferentes secciones del análisis:
                         <ul style={{ 
                             marginTop: '8px',
                             marginBottom: '8px',
@@ -72,8 +72,8 @@ const ChannelGrid = ({ channels, addChannelData, activeSlot, setActiveSlot }) =>
                             <li>Detección de marcas</li>
                         </ul>
                     </li>
-                    <li>Puedes analizar hasta 15 canales simultáneamente</li>
-                    <li>Usa los controles + y - para expandir/contraer el análisis</li>
+                    <li>Puede analizar hasta 15 canales simultáneamente</li>
+                    <li>Use los controles + y x para expandir/contraer el análisis</li>
                 </ol>
                 <div style={{ 
                     marginTop: '20px',
@@ -85,6 +85,7 @@ const ChannelGrid = ({ channels, addChannelData, activeSlot, setActiveSlot }) =>
                     fontStyle: 'italic'
                 }}>
                     Nota: El análisis puede tardar varios minutos dependiendo del tamaño del canal y la cantidad de vídeos a procesar.
+                    Si alguna funcionalidad aparece vacía, cierre y vuelva a abrir la carta para solucionarlo. 
                 </div>
             </div>
         </div>

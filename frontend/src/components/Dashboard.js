@@ -94,6 +94,8 @@ const Dashboard = ({ data }) => {
     const [queryInput, setQueryInput] = useState(""); // Estado para almacenar el texto ingresado por el usuario
     const [queryResult, setQueryResult] = useState(""); // Estado para almacenar el resultado de la consulta
     const [isQuerying, setIsQuerying] = useState(false); // Estado para manejar el estado de carga de la consulta
+    const [showQueryFeedback, setShowQueryFeedback] = useState(false);
+
 
     
     
@@ -239,6 +241,33 @@ const Dashboard = ({ data }) => {
             setQueryResult("Ocurrió un error al procesar la consulta.");
         } finally {
             setIsQuerying(false); // Finaliza el estado de carga
+        }
+    };
+
+    const handleQueryFeedback = async (result) => {
+        if (!queryResult) {
+            console.error("No hay resultado de consulta disponible para enviar.");
+            return;
+        }
+    
+        const feedbackData = {
+            type: "query", // Debe ser un string
+            result: Boolean(result), // Debe ser un booleano (true o false)
+            content: queryResult, // Debe ser un string
+            prompt: null // Asegúrate de enviar el campo prompt como null si no es necesario
+        };
+    
+        console.log("Enviando feedback:", feedbackData);
+    
+        try {
+            await axios.post("http://127.0.0.1:8000/api/feedback", feedbackData);
+            setShowQueryFeedback(true);
+            setTimeout(() => setShowQueryFeedback(false), 3000);
+        } catch (error) {
+            console.error("Error guardando el feedback de consulta:", error);
+            if (error.response) {
+                console.log("Error response data:", error.response.data);
+            }
         }
     };
     
@@ -787,71 +816,120 @@ const Dashboard = ({ data }) => {
     </div>
 
     {/* Query Box */}
-    <div style={{
-        flex: "1",
-        padding: "1rem",
-        borderRadius: "8px",
-        background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
-        boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
-    }}>
-        <h3>Consultas en Lenguaje Natural</h3>
-        <input
-            type="text"
-            value={queryInput}
-            onChange={(e) => setQueryInput(e.target.value)}
-            placeholder="Escribe tu consulta en lenguaje natural..."
-            style={{
-                width: "95%",
+   {/* Query Box */}
+{/* Query Box */}
+<div style={{
+    flex: "1",
+    padding: "1rem",
+    borderRadius: "8px",
+    background: "linear-gradient(to bottom, #f7f7f7, #d4d4d4)",
+    boxShadow: "0 4px 8px rgba(0, 0, 0, 0.2)",
+}}>
+    <h3>Consultas en Lenguaje Natural</h3>
+    <input
+        type="text"
+        value={queryInput}
+        onChange={(e) => setQueryInput(e.target.value)}
+        placeholder="Escribe tu consulta en lenguaje natural..."
+        style={{
+            width: "95%",
+            padding: "0.5rem",
+            marginBottom: "1rem",
+            borderRadius: "4px",
+            border: "1px solid #ccc",
+        }}
+    />
+    <button
+        onClick={handleQuery}
+        disabled={isQuerying}
+        style={{
+            padding: "0.5rem 1rem",
+            backgroundColor: "#333",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: isQuerying ? "wait" : "pointer",
+            opacity: isQuerying ? 0.7 : 1,
+        }}
+    >
+        {isQuerying ? "Consultando..." : "Consultar"}
+    </button>
+
+    {queryResult && (
+        <div style={{
+            marginTop: "1rem",
+            padding: "0.5rem",
+            borderRadius: "4px",
+            backgroundColor: "#f9f9f9",
+        }}>
+            <strong>Resultados:</strong>
+            <pre style={{
+                marginTop: "0.5rem",
+                background: "#f7f7f7",
                 padding: "0.5rem",
-                marginBottom: "1rem",
                 borderRadius: "4px",
-                border: "1px solid #ccc",
-            }}
-        />
-        <button
-            onClick={handleQuery}
-            disabled={isQuerying}
-            style={{
-                padding: "0.5rem 1rem",
-                backgroundColor: "#333",
-                color: "white",
-                border: "none",
-                borderRadius: "4px",
-                cursor: isQuerying ? "wait" : "pointer",
-                opacity: isQuerying ? 0.7 : 1,
-            }}
-        >
-            {isQuerying ? "Consultando..." : "Consultar"}
-        </button>
-        {queryResult && (
+                whiteSpace: "pre-wrap",
+                wordWrap: "break-word",
+            }}>
+                {queryResult}
+            </pre>
+            
             <div style={{
                 marginTop: "1rem",
-                padding: "0.5rem",
-                borderRadius: "4px",
-                backgroundColor: "#f9f9f9",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "2rem",
             }}>
-                <strong>Resultados:</strong>
-                <pre style={{
-                    marginTop: "0.5rem",
-                    background: "#f7f7f7",
-                    padding: "0.5rem",
-                    borderRadius: "4px",
-                    whiteSpace: "pre-wrap",
-                    wordWrap: "break-word",
-                }}>
-                    {queryResult}
-                </pre>
+                <span style={{
+                    alignSelf: "center",
+                    fontSize: "0.9rem",
+                    color: "#333",
+                }}>¿Le ha resultado útil?</span>
+                <button
+                    onClick={() => handleQueryFeedback(true)}
+                    style={{
+                        padding: "0.5rem 1rem",
+                        backgroundColor: "#333",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                    }}
+                >Sí</button>
+                <button
+                    onClick={() => handleQueryFeedback(false)}
+                    style={{
+                        padding: "0.5rem 1rem",
+                        backgroundColor: "#333",
+                        color: "white",
+                        border: "none",
+                        borderRadius: "4px",
+                        cursor: "pointer",
+                    }}
+                >No</button>
             </div>
-        )}
-        
-        <p style={{
+
+            {showQueryFeedback && (
+                <p style={{
+                    marginTop: "1rem",
+                    color: "#333",
+                    fontStyle: "italic",
+                }}>Gracias por su valoración.</p>
+            )}
+        </div>
+    )}
+
+    <p style={{
         marginTop: "1rem",
         fontSize: "0.9rem",
         color: "#333",
         fontStyle: "italic",
-        }}>
-        Este sistema permite consultar la base de datos sin conocimientos previos de lenguajes de consulta. </p>
-    </div>
+    }}>
+        Este sistema permite consultar la base de datos sin conocimientos previos de lenguajes de consulta.
+    </p>
+</div>
+
+
 </div>
 
 {/* Fourth Row: Detected Brands, Word Counts, and Graphs */}

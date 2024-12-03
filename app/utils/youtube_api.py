@@ -7,14 +7,9 @@ from app.utils.wordcount_plot import generar_grafico_wordcount
 from app.database.database_service import insert_video_wordcount  
 from app.utils.sentiment_analysis import analyze_comments
 
-
-
 # Cargar variables de entorno
 load_dotenv()
 API_KEY = os.getenv("YOUTUBE_API_KEY")
-
-
-
 
 def fetch_channel_id_from_handle(channel_handle):
     """
@@ -183,6 +178,7 @@ def fetch_channel_videos(channel_url):
                 # Guardar wordcount en la base de datos
                 insert_video_wordcount(
                     video_id=latest_video["videoId"],
+                    channel_id=channel_id,  # Agregar el channel_id aquí
                     channel_name=channel_data["items"][0]["snippet"]["title"],
                     video_title=latest_video["title"],
                     wordcount=latest_video["wordcount"],

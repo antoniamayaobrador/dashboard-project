@@ -126,18 +126,22 @@ async def historical_wordcount(channel_name: str):
             detail=f"Error al obtener el histórico del canal: {str(e)}"
         )
 
+from pydantic import BaseModel
+from typing import Optional
+
 class FeedbackData(BaseModel):
     type: str
     result: bool
     content: str
     prompt: Optional[str] = None
 
+
 @router.post("/api/feedback")
 async def save_user_feedback(feedback: FeedbackData):
     """
     Endpoint para guardar la retroalimentación del usuario.
     """
-    try:
+    try: 
         save_feedback(
             feedback.type, 
             feedback.result, 
@@ -165,7 +169,7 @@ async def query_llm(request: QueryRequest):
         # Ejecutar consulta SQL
         results = execute_sql_query(sql_query)
         
-        return {"query": sql_query, "results": results}
+        return {"query": sql_query, "results": results, "prompt" : prompt}
     except Exception as e:
         logger.error(f"Error en el proceso de consulta: {str(e)}")
         logger.debug(traceback.format_exc())

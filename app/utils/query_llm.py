@@ -45,60 +45,18 @@ def generate_sql_from_question(question: str) -> str:
         
         # Crear el prompt detallado
         prompt = (
-    "Convierte esta pregunta en una consulta SQL válida para PostgreSQL. "
-    "Las tablas disponibles son:\n\n"
+    "You are a powerful text-to-SQL model. Given the SQL tables and natural language question, your job is to write SQL query that answers the question."
+    "The tables you can use and join are :\n\n"
     "1. videos(video_id TEXT, channel_name TEXT, video_title TEXT, total_palabras INT, total_words INT, created_at TIMESTAMP)\n"
     "2. wordcount(word TEXT, count INT, video_id TEXT, created_at TIMESTAMP)\n\n"
-    f"Pregunta: {question}\n\n"
-    "Reglas para generar la consulta:\n"
-    "1. Usa comillas dobles para nombres de columnas y tablas.\n"
-    "2. Utiliza las columnas correctas de cada tabla.\n"
-    "3. Usa INNER JOIN para relaciones entre tablas.\n"
-    "4. Genera UNA sola consulta válida.\n"
-    "5. Usa correctamente ORDER BY con columnas válidas.\n"
-    "6. Asegúrate de que las columnas referenciadas existen.\n"
-    "7. Genera la consulta terminando en ';'.\n"
-    "8. Usa funciones agregadas como COUNT, SUM, AVG solo en columnas válidas.\n"
-    "9. Evita duplicados al escribir consultas (sin repetir el contenido).\n"
-    "10. Asegúrate de que todas las condiciones en WHERE sean válidas y estén correctamente formateadas.\n"
-    "11. Siempre incluye alias claros para las tablas (por ejemplo, wc para wordcount, v para videos).\n"
-    "12. Asegúrate de que el tipo de dato de las condiciones en WHERE sea compatible con las columnas comparadas.\n\n"
-    "Ejemplos:\n"
-    "Pregunta: ¿Cuántas veces aparece la palabra perfume en el último vídeo?\n"
-    "SQL: SELECT SUM(wc.count) AS total_count "
-    "FROM wordcount wc "
-    "INNER JOIN videos v ON wc.video_id = v.video_id "
-    "WHERE wc.word = 'perfume' "
-    "AND v.video_id = (SELECT video_id FROM videos ORDER BY created_at DESC LIMIT 1);\n\n"
-    "Pregunta: ¿Cuál es el título del vídeo con más palabras?\n"
-    "SQL: SELECT v.video_title "
-    "FROM videos v "
-    "ORDER BY v.total_palabras DESC LIMIT 1;\n\n"
-    "Pregunta: ¿Cuántos vídeos tiene un canal llamado 'Andrés Perfume-Man'?\n"
-    "SQL: SELECT COUNT(*) AS video_count "
-    "FROM videos v "
-    "WHERE v.channel_name = 'Andrés Perfume-Man';\n\n"
-    "Pregunta: ¿Cuántas veces aparece la palabra 'black' en todos los vídeos?\n"
-    "SQL: SELECT SUM(wc.count) AS total_count "
-    "FROM wordcount wc "
-    "WHERE wc.word = 'black';\n\n"
-    "Pregunta: ¿Cuál es el canal que tiene más palabras en total en sus vídeos?\n"
-    "SQL: SELECT v.channel_name, SUM(v.total_palabras) AS total_words "
-    "FROM videos v "
-    "GROUP BY v.channel_name "
-    "ORDER BY total_words DESC LIMIT 1;\n\n"
-    "Pregunta: ¿Cuál es la palabra más mencionada en el vídeo más reciente?\n"
-    "SQL: SELECT wc.word, SUM(wc.count) AS total_count "
-    "FROM wordcount wc "
-    "WHERE wc.video_id = (SELECT video_id FROM videos ORDER BY created_at DESC LIMIT 1) "
-    "GROUP BY wc.word "
-    "ORDER BY total_count DESC LIMIT 1;\n\n"
+    f"Question: {question}\n\n" 
     "SQL:"
 )
 
 
 
         
+
         # Tokenizar la pregunta
         inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
         
@@ -327,7 +285,7 @@ async def query_llm(request: QueryRequest):
         # Ejecutar consulta SQL
         results = execute_sql_query(sql_query)
         
-        return {"query": sql_query, "results": results}
+        return {"query": sql_query, "results": results, "prompt" : prompt}
     except Exception as e:
         logger.error(f"Error en el proceso de consulta: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")

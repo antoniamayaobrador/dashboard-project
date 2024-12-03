@@ -1,29 +1,29 @@
 from app.database.models import get_db_connection
 
-def insert_video_wordcount(video_id, channel_name, video_title, wordcount, total_palabras):
+def insert_video_wordcount(video_id, channel_id, channel_name, video_title, wordcount, total_palabras):
     """
     Inserta o actualiza información de wordcount y total de palabras para un video.
     """
     conn = get_db_connection()
     try:
         with conn.cursor() as cursor:
-            # Inserta o actualiza el total de palabras y wordcount
+            # Inserta o actualiza el total de palabras y wordcount en la tabla de videos
             query = """
-                INSERT INTO videos (video_id, channel_name, video_title, total_palabras)
-                VALUES (%s, %s, %s, %s)
-                ON CONFLICT (video_id) DO UPDATE SET total_palabras = EXCLUDED.total_palabras;
+                INSERT INTO videos (video_id, channel_id, channel_name, video_title, total_palabras)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (video_id) DO UPDATE SET total_palabras = EXCLUDED.total_palabras, channel_id = EXCLUDED.channel_id;
             """
-            cursor.execute(query, (video_id, channel_name, video_title, total_palabras))
+            cursor.execute(query, (video_id, channel_id, channel_name, video_title, total_palabras))
 
             # Inserta cada palabra en la tabla wordcount
             wordcount_query = """
-                INSERT INTO wordcount (video_id, word, count)
-                VALUES (%s, %s, %s)
+                INSERT INTO wordcount (video_id, channel_id, word, count)
+                VALUES (%s, %s, %s, %s)
                 ON CONFLICT (video_id, word) DO UPDATE SET count = EXCLUDED.count;
             """
             cursor.executemany(
                 wordcount_query,
-                [(video_id, word, count) for word, count in wordcount]
+                [(video_id, channel_id, word, count) for word, count in wordcount]
             )
 
         conn.commit()
@@ -33,6 +33,7 @@ def insert_video_wordcount(video_id, channel_name, video_title, wordcount, total
         conn.rollback()
     finally:
         conn.close()
+
 
 def get_wordcount_summary():
     """
@@ -86,7 +87,6 @@ def get_historical_wordcount_by_channel(channel_name):
     finally:
         conn.close()
 
-
 def check_video_exists(video_id):
     """
     Verifica si un video ya existe en la base de datos.
@@ -107,9 +107,12 @@ def check_video_exists(video_id):
     finally:
         conn.close()
 
+
 def save_feedback(feedback_type, result, content, prompt=None):
     """
     Guarda el feedback en la base de datos incluyendo el prompt.
+
+
     """
     try:
         conn = get_db_connection()
@@ -119,7 +122,7 @@ def save_feedback(feedback_type, result, content, prompt=None):
         INSERT INTO feedback (type, result, content, prompt) 
         VALUES (%s, %s, %s, %s)
         """
-        cursor.execute(query, (feedback_type, result, content, prompt))
+        cursor.execute(query, (feedback_type, result, content, prompt or None))
         
         conn.commit()
         cursor.close()
