@@ -35,10 +35,7 @@ class WordcountData(BaseModel):
     wordcount: list
 
 
-class FeedbackData(BaseModel):
-    type: str
-    result: bool
-    content: str 
+
 
 class QueryRequest(BaseModel):
     question: str
@@ -129,17 +126,30 @@ async def historical_wordcount(channel_name: str):
             detail=f"Error al obtener el histórico del canal: {str(e)}"
         )
 
+class FeedbackData(BaseModel):
+    type: str
+    result: bool
+    content: str
+    prompt: Optional[str] = None
+
 @router.post("/api/feedback")
 async def save_user_feedback(feedback: FeedbackData):
     """
     Endpoint para guardar la retroalimentación del usuario.
     """
     try:
-        save_feedback(feedback.type, feedback.result, feedback.content)
+        save_feedback(
+            feedback.type, 
+            feedback.result, 
+            feedback.content,
+            feedback.prompt
+        )
         return {"message": "Feedback guardado exitosamente."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al guardar el feedback: {str(e)}")
-    
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error al guardar el feedback: {str(e)}"
+        )
 
 
 import traceback

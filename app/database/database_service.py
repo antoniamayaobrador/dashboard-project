@@ -107,16 +107,19 @@ def check_video_exists(video_id):
     finally:
         conn.close()
 
-def save_feedback(feedback_type, result, content):
+def save_feedback(feedback_type, result, content, prompt=None):
+    """
+    Guarda el feedback en la base de datos incluyendo el prompt.
+    """
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
         
         query = """
-        INSERT INTO feedback (type, result, content) 
-        VALUES (%s, %s, %s)
+        INSERT INTO feedback (type, result, content, prompt) 
+        VALUES (%s, %s, %s, %s)
         """
-        cursor.execute(query, (feedback_type, result, content))
+        cursor.execute(query, (feedback_type, result, content, prompt))
         
         conn.commit()
         cursor.close()
@@ -124,3 +127,4 @@ def save_feedback(feedback_type, result, content):
     except Exception as e:
         print(f"Error al guardar el feedback: {e}")
         raise
+

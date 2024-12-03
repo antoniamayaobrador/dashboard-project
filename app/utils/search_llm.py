@@ -103,7 +103,8 @@ async def search_definition(request: SearchRequest):
             logger.warning("La definición generada es demasiado corta")
             raise ValueError("La definición generada es demasiado corta")
             
-        return {"definition": definition}
+        return {"definition": definition, 
+                "promt": prompt}
         
     except Exception as e:
         logger.error(f"Error en el proceso de definición: {str(e)}")
