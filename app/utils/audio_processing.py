@@ -1,443 +1,278 @@
+# Importaciones
 import os
-import yt_dlp
-import speech_recognition as sr
-from transformers import AutoModelForCausalLM, AutoTokenizer, AutoModelForSeq2SeqLM
-import torch
 import re
-from app.utils.text_analysis import limpiar_y_contar, find_brands_in_transcription
+import time
+import yt_dlp
+import whisper
+import speech_recognition as sr
+from vosk import Model, KaldiRecognizer
+import wave
+import json
+from transformers import AutoModelForCausalLM, AutoTokenizer
+from youtube_transcript_api import YouTubeTranscriptApi
+import torch
+from app.utils.text_analysis import limpiar_y_contar, TextAnalyzer
 
-# Configuración del modelo Qwen para resúmenes
-SMALL_CHAT_MODEL_CON_CASTELLANO = "Qwen/Qwen1.5-1.8B-Chat"
-DEVICE = "cpu"
+# Set environment variables
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# Configuración del modelo BART para puntuación
-PUNCT_MODEL_NAME = "facebook/bart-large-cnn"
+# Configuración de los modelos
+SMALL_CHAT_MODEL_CON_CASTELLANO = "Qwen/Qwen2-1.5B-Instruct"
+DEVICE = "cpu"  # Force CPU usage
 
-# Inicializar modelos
-qwen_model = AutoModelForCausalLM.from_pretrained(SMALL_CHAT_MODEL_CON_CASTELLANO).to(DEVICE)
-qwen_tokenizer = AutoTokenizer.from_pretrained(SMALL_CHAT_MODEL_CON_CASTELLANO)
-
-punct_model = AutoModelForSeq2SeqLM.from_pretrained(PUNCT_MODEL_NAME)
-punct_tokenizer = AutoTokenizer.from_pretrained(PUNCT_MODEL_NAME)
-
-# Lista de palabras en inglés a filtrar
-stopwords_ingles = set([
-    "the", "is", "and", "of", "in", "on", "for", "to", "this", "that", "with", "it", "as", "at", "by", "from", "be",
-    "an", "has", "have", "but", "or", "not", "you", "me", "he", "she", "we", "they", "us", "their", "my", "your",
-    "its", "more", "so", "can", "will", "should", "if", "about", "like", "just", "because", "into", "over", "before",
-    "after", "then"
-])
-
-def filtrar_ingles(texto):
-    """
-    Filtra palabras en inglés del texto.
-    """
-    palabras = texto.split()
-    return " ".join([palabra for palabra in palabras if palabra.lower() not in stopwords_ingles])
-
-def normalizar_puntuacion(texto):
-    """
-    Normaliza puntuación asegurando capitalización tras puntos.
-    """
-    oraciones = texto.split(". ")
-    oraciones = [oracion.capitalize() for oracion in oraciones]
-    return ". ".join(oraciones)
-
-def puntuar_texto_en_espanol(texto, max_length=1024):
-    """
-    Función híbrida que combina BART con reglas básicas para puntuar texto en español.
-    """
-    if not texto:
-        raise ValueError("El texto para puntuación está vacío.")
-    
+def init_models():
     try:
-        print("\n=== INICIANDO PUNTUACIÓN DEL TEXTO ===")
-        print(f"Longitud del texto original: {len(texto)} caracteres")
-
-        # Paso 1: División en fragmentos manejables
-        palabras = texto.split()
-        fragmentos = []
-        fragmento_actual = []
-        longitud_actual = 0
+        qwen_model = AutoModelForCausalLM.from_pretrained(
+            SMALL_CHAT_MODEL_CON_CASTELLANO,
+            torch_dtype=torch.float32,
+            low_cpu_mem_usage=True,
+            device_map="auto"
+        ).to(DEVICE)
+        qwen_tokenizer = AutoTokenizer.from_pretrained(SMALL_CHAT_MODEL_CON_CASTELLANO)
         
-        for palabra in palabras:
-            if longitud_actual + len(palabra) + 1 <= (max_length - 200):  # Margen de seguridad
-                fragmento_actual.append(palabra)
-                longitud_actual += len(palabra) + 1
-            else:
-                fragmentos.append(" ".join(fragmento_actual))
-                fragmento_actual = [palabra]
-                longitud_actual = len(palabra) + 1
-        
-        if fragmento_actual:
-            fragmentos.append(" ".join(fragmento_actual))
+        if qwen_tokenizer.pad_token is None:
+            qwen_tokenizer.pad_token = qwen_tokenizer.eos_token
+            qwen_model.config.pad_token_id = qwen_model.config.eos_token_id
 
-        print(f"Texto dividido en {len(fragmentos)} fragmentos")
-        texto_final = ""
-
-        # Paso 2: Procesar cada fragmento
-        for i, fragmento in enumerate(fragmentos, 1):
-            print(f"\n--- Procesando fragmento {i}/{len(fragmentos)} ---")
-            print(f"Longitud del fragmento: {len(fragmento)} caracteres")
-
-            # Intentar primero con BART
-            try:
-                prompt = f"Añade signos de puntuación a este texto en español:\n\n{fragmento}"
-                inputs = punct_tokenizer(prompt, return_tensors="pt", max_length=max_length, truncation=True)
-                
-                with torch.no_grad():
-                    outputs = punct_model.generate(
-                        inputs["input_ids"],
-                        max_length=max_length,
-                        num_beams=4,
-                        length_penalty=1.0,
-                        early_stopping=True,
-                        do_sample=False
-                    )
-                
-                texto_bart = punct_tokenizer.decode(outputs[0], skip_special_tokens=True)
-                
-                # Limpiar resultado de BART
-                texto_bart = texto_bart.split(":")[-1].strip()
-                
-                # Verificar que BART no perdió contenido significativo
-                palabras_originales = set(fragmento.lower().split())
-                palabras_bart = set(texto_bart.lower().split())
-                
-                if len(palabras_bart) >= len(palabras_originales) * 0.9:
-                    print("✓ Usando salida de BART")
-                    texto_procesado = texto_bart
-                else:
-                    print("⚠️ BART perdió contenido, aplicando reglas básicas")
-                    texto_procesado = aplicar_reglas_basicas(fragmento)
-            except Exception as e:
-                print(f"⚠️ Error con BART: {e}")
-                texto_procesado = aplicar_reglas_basicas(fragmento)
-
-            # Paso 3: Aplicar reglas básicas adicionales al resultado
-            texto_procesado = mejorar_puntuacion(texto_procesado)
-            texto_final += texto_procesado + " "
-
-        # Paso 4: Limpieza y formato final
-        texto_final = texto_final.strip()
-        texto_final = re.sub(r'\s+', ' ', texto_final)
-        texto_final = re.sub(r'\s+([.,!?])', r'\1', texto_final)
-        texto_final = texto_final[0].upper() + texto_final[1:]
-
-        print("\n=== RESULTADO DE LA PUNTUACIÓN ===")
-        print(f"Longitud original: {len(texto)} caracteres")
-        print(f"Longitud final: {len(texto_final)} caracteres")
-        
-        return texto_final
-
+        return qwen_model, qwen_tokenizer
     except Exception as e:
-        print(f"\n❌ Error durante la puntuación: {str(e)}")
-        print("Detalles del error:")
-        import traceback
-        print(traceback.format_exc())
-        return texto
+        print(f"Error initializing models: {e}")
+        return None, None
+    
+# Initialize models globally
+qwen_model, qwen_tokenizer = init_models()
 
-def aplicar_reglas_basicas(texto):
-    """
-    Aplica reglas básicas de puntuación.
-    """
-    # Normalizar espacios
-    texto = re.sub(r'\s+', ' ', texto).strip()
-    
-    # Reglas básicas de puntuación
-    texto = re.sub(r'([a-zñáéíóú])\s+(pero|porque|entonces|así que|por eso)', r'\1. \2', texto)
-    texto = re.sub(r'([a-zñáéíóú])\s+([A-ZÁÉÍÓÚÑ])', r'\1. \2', texto)
-    
-    return texto
-
-def mejorar_puntuacion(texto):
-    """
-    Aplica mejoras adicionales a la puntuación.
-    """
-    # Proteger nombres compuestos y términos especiales
-    texto = re.sub(r'([A-Z][a-z]+)\s*\.\s*([A-Z][a-z]+)', r'\1 \2', texto)
-    
-    # Mejorar comas en enumeraciones
-    texto = re.sub(r'(\w+)(\s+y\s+|\s+e\s+|\s+o\s+)(\w+)(?=\s+\w+)', r'\1, \2\3', texto)
-    
-    # Asegurar espacio después de puntuación
-    texto = re.sub(r'([.,!?])([A-ZÁÉÍÓÚÑa-záéíóúñ])', r'\1 \2', texto)
-    
-    # Eliminar puntuación duplicada
-    texto = re.sub(r'\.+', '.', texto)
-    texto = re.sub(r',+', ',', texto)
-    
-    # Asegurar que las oraciones terminen en punto
-    if not texto.endswith(('.', '!', '?')):
-        texto += '.'
-    
-    return texto
-
-def generar_resumen_en_espanol(texto: str) -> str:
-    """
-    Genera un resumen profesional y conciso del texto, independiente del contexto.
-    """
-    if not texto:
-        print("❌ Error: El texto para resumir está vacío.")
-        raise ValueError("El texto para resumir está vacío.")
-    
+def download_audio_yt_dlp(video_url):
     try:
-        print("\n--- Iniciando generación del resumen ---")
+        output_dir = "downloads"
+        os.makedirs(output_dir, exist_ok=True)
         
-        prompt = (
-            "A partir del siguiente texto, genera un resumen breve y profesional manteniendo la coherencia con el contenido del texto"
-            "de máximo 5 oraciones:\n\n"
-            f"{texto}\n\n"
-            "Resumen:"
-        )
-        
-        inputs = qwen_tokenizer(prompt, return_tensors="pt").to(qwen_model.device)
-        
-        outputs = qwen_model.generate(
-            **inputs,
-            max_new_tokens=150,      # Reducido para forzar resúmenes más concisos
-            num_beams=4,
-            length_penalty=0.8,      # Penalizar longitud para favorecer concisión
-            early_stopping=True,
-            do_sample=True,
-            temperature=0.3,         # Reducida para más consistencia
-            top_p=0.95,
-            repetition_penalty=1.2,
-            no_repeat_ngram_size=3   # Evitar repetición de frases
-        )
-        
-        respuesta_texto = qwen_tokenizer.decode(outputs[0], skip_special_tokens=True)
-        
-        # Extraer solo el resumen (después de "Resumen:")
-        resumen = respuesta_texto.split("Resumen:")[-1].strip()
-        
-        # Limpieza y formateo
-        resumen = re.sub(r'\s+', ' ', resumen)
-        resumen = re.sub(r'\s+([.,])', r'\1', resumen)
-        resumen = re.sub(r'([.!?])\s*([a-zñáéíóú])', 
-                        lambda m: f"{m.group(1)} {m.group(2).upper()}", 
-                        resumen)
-        
-        # Si el resumen es demasiado largo, intentar acortarlo
-        if len(resumen.split()) > 60:  # Aproximadamente 3 oraciones
-            oraciones = re.split(r'[.!?]+', resumen)
-            resumen = '. '.join(oraciones[:3]) + '.'
-        
-        # Verificación de calidad
-        if len(resumen.split()) < 3 or len(resumen) < 20:
-            print("⚠️ Resumen demasiado corto, reintentando...")
-            return generar_resumen_en_espanol(texto)
-        
-        print(f"\nResumen generado ({len(resumen)} caracteres)")
-        return resumen
-
-    except Exception as e:
-        print(f"\n❌ Error en la generación del resumen: {e}")
-        print("Detalles del error:")
-        import traceback
-        print(traceback.format_exc())
-        return ""
-
-
-def download_audio_yt_dlp(video_url, output_path="downloads"):
-    """
-    Descarga el audio de un video de YouTube usando yt-dlp.
-    """
-    try:
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
-
         ydl_opts = {
             'format': 'bestaudio/best',
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'wav',
-                'preferredquality': '192',
             }],
-            'outtmpl': os.path.join(output_path, '%(title)s.%(ext)s'),
+            'outtmpl': os.path.join(output_dir, '%(id)s.%(ext)s'),
+            'keepvideo': True
         }
-
+        
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([video_url])
-
-        print(f"Audio descargado en {output_path}")
-        return output_path
-
+            
+        return output_dir
     except Exception as e:
-        print(f"Error al descargar el audio con yt-dlp: {e}")
+        print(f"Error downloading audio: {e}")
         return None
 
-def transcribir_audio(audio_file_path, chunk_duration=60):
-    """
-    Transcribe un archivo de audio dividiéndolo en fragmentos usando Google Speech Recognition.
-    """
-    recognizer = sr.Recognizer()
-    transcription = ""
-
+def transcribir_audio_whisper(audio_file):
     try:
-        print(f"\nIniciando transcripción del archivo: {audio_file_path}")
+        print("\nIniciando transcripción con Whisper...")
+        model = whisper.load_model("small")
         
-        with sr.AudioFile(audio_file_path) as source:
-            # Obtener la duración total del audio
-            total_duration = source.DURATION
-            num_chunks = int(total_duration // chunk_duration + (1 if total_duration % chunk_duration > 0 else 0))
-            print(f"Duración total del audio: {total_duration:.2f} segundos")
-            print(f"Dividiendo en {num_chunks} fragmentos de {chunk_duration} segundos")
-
-            # Ajustar el nivel de ruido ambiental
-            print("Ajustando nivel de ruido ambiental...")
-            recognizer.adjust_for_ambient_noise(source)
-
-            # Leer todo el audio de una vez
-            print("Leyendo el archivo de audio completo...")
-            audio_data = recognizer.record(source)
-            total_frames = len(audio_data.frame_data)
-            frames_per_chunk = int(chunk_duration * source.SAMPLE_RATE * source.SAMPLE_WIDTH)
-
-            for i in range(num_chunks):
-                try:
-                    print(f"\nProcesando fragmento {i + 1}/{num_chunks}")
-                    
-                    # Calcular los índices de inicio y fin para este fragmento
-                    start_frame = i * frames_per_chunk
-                    end_frame = min(start_frame + frames_per_chunk, total_frames)
-                    
-                    # Crear un nuevo AudioData para este fragmento
-                    chunk_data = sr.AudioData(
-                        audio_data.frame_data[start_frame:end_frame],
-                        audio_data.sample_rate,
-                        audio_data.sample_width
-                    )
-
-                    # Transcribir el fragmento
-                    print(f"Transcribiendo fragmento {i + 1}...")
-                    chunk_transcription = recognizer.recognize_google(chunk_data, language='es-ES')
-                    print(f"Fragmento {i + 1} transcrito: {chunk_transcription[:50]}...")
-                    
-                    transcription += chunk_transcription + " "
-                    
-                except sr.UnknownValueError:
-                    print(f"⚠️ No se pudo entender el audio en el fragmento {i + 1}/{num_chunks}")
-                except sr.RequestError as e:
-                    print(f"❌ Error en el servicio de Google Speech para el fragmento {i + 1}: {e}")
-                    if transcription.strip():  # Si ya tenemos algo transcrito, continuamos
-                        print("Continuando con el siguiente fragmento...")
-                        continue
-                    return ""
-                except Exception as e:
-                    print(f"❌ Error inesperado en el fragmento {i + 1}: {e}")
-                    if transcription.strip():  # Si ya tenemos algo transcrito, continuamos
-                        print("Continuando con el siguiente fragmento...")
-                        continue
-
-        transcription = transcription.strip()
-        print("\n=== TRANSCRIPCIÓN COMPLETADA ===")
-        print(f"Longitud total de la transcripción: {len(transcription)} caracteres")
-        return transcription
-
-    except FileNotFoundError:
-        print(f"❌ Archivo de audio no encontrado: {audio_file_path}")
-        return ""
-    except Exception as e:
-        print(f"❌ Error durante la transcripción: {e}")
-        import traceback
-        print(traceback.format_exc())
-        return ""
-
-def borrar_archivo(audio_file):
-    """
-    Elimina un archivo de audio.
-    """
-    try:
-        if os.path.exists(audio_file):
-            os.remove(audio_file)
-            print(f"Archivo eliminado: {audio_file}")
+        print("Transcribiendo con Whisper...")
+        result = model.transcribe(
+            audio_file,
+            language="es",
+            task="transcribe"
+        )
+        
+        if result and "text" in result and result["text"].strip():
+            print("Transcripción completada con Whisper.")
+            return result["text"]
         else:
-            print("El archivo no existe.")
+            print("La transcripción con Whisper está vacía.")
+            return None
+                
     except Exception as e:
-        print(f"Error al eliminar el archivo: {e}")
+        print(f"Error en la transcripción con Whisper: {e}")
+        return None
+
+def transcribir_audio_google(audio_file, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            print(f"\nIntento de transcripción con Google {attempt + 1}/{max_retries}")
+            recognizer = sr.Recognizer()
+            
+            recognizer.pause_threshold = 0.8
+            recognizer.energy_threshold = 300
+            
+            with sr.AudioFile(audio_file) as source:
+                print("Leyendo archivo de audio...")
+                recognizer.adjust_for_ambient_noise(source, duration=0.5)
+                print("Grabando audio...")
+                audio = recognizer.record(source)
+                
+                print("Realizando transcripción...")
+                transcription = recognizer.recognize_google(
+                    audio, 
+                    language='es-ES',
+                    show_all=False
+                )
+                if transcription and transcription.strip():
+                    print("Transcripción completada con Google Speech.")
+                    return transcription
+                    
+        except sr.RequestError as e:
+            print(f"Error de solicitud en intento {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                print("Esperando antes de reintentar...")
+                time.sleep(2)
+            
+        except Exception as e:
+            print(f"Error en intento {attempt + 1}: {e}")
+            if attempt < max_retries - 1:
+                print("Esperando antes de reintentar...")
+                time.sleep(2)
+    
+    print("Se agotaron los intentos con Google Speech.")
+    return None
+
+def transcribir_audio_vosk(audio_file):
+    try:
+        print("\nIniciando transcripción con Vosk...")
+        model = Model(lang="es")
+        
+        print("Abriendo archivo de audio...")
+        wf = wave.open(audio_file, "rb")
+        
+        print("Inicializando reconocedor...")
+        rec = KaldiRecognizer(model, wf.getframerate())
+        rec.SetWords(True)
+        
+        print("Transcribiendo audio...")
+        results = []
+        while True:
+            data = wf.readframes(4000)
+            if len(data) == 0:
+                break
+            if rec.AcceptWaveform(data):
+                part = json.loads(rec.Result())
+                if 'text' in part and part['text'].strip():
+                    results.append(part['text'])
+        
+        part = json.loads(rec.FinalResult())
+        if 'text' in part and part['text'].strip():
+            results.append(part['text'])
+            
+        transcription = ' '.join(results)
+        
+        if transcription.strip():
+            print("Transcripción completada con Vosk.")
+            return transcription
+        else:
+            print("La transcripción con Vosk está vacía.")
+            return None
+            
+    except Exception as e:
+        print(f"Error en la transcripción con Vosk: {e}")
+        return None
+
+def transcribir_audio(audio_file):
+    # 1. Intentar con Whisper
+    transcription = transcribir_audio_whisper(audio_file)
+    if transcription:
+        return transcription
+        
+    print("\nWhisper falló, intentando con Google Speech...")
+    
+    # 2. Si falla Whisper, intentar con Google Speech
+    transcription = transcribir_audio_google(audio_file)
+    if transcription:
+        return transcription
+        
+    print("\nGoogle Speech falló, intentando con Vosk...")
+    
+    # 3. Si falla Google Speech, intentar con Vosk
+    transcription = transcribir_audio_vosk(audio_file)
+    return transcription
+
+def obtener_transcripcion_youtube(video_url):
+    try:
+        video_id = video_url.split("https://www.youtube.com/watch?v=")[-1]
+        transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['es'])
+        transcription = " ".join([item['text'] for item in transcript])
+        return transcription
+    except Exception as e:
+        print(f"Error al obtener la transcripción con YouTubeTranscriptApi: {str(e)}")
+        if "Subtitles are disabled for this video" in str(e):
+            print("\nSubtítulos desactivados, iniciando flujo alternativo...")
+        return None
+
+def puntuar_texto_en_espanol(texto):
+    try:
+        texto = re.sub(r'\.(\s*)([a-záéíóúñ])', lambda x: x.group(1) + x.group(2).upper(), texto)
+        texto = re.sub(r'\s+([.,!?])', r'\1', texto)
+        if not texto.endswith('.'):
+            texto += '.'
+        texto = re.sub(r'\[.*?\]', '', texto).strip()
+        texto = re.sub(r'((?:[^.?!]*[.?!]){5})', r'\1\n\n', texto)
+        texto = re.sub(r'\s+', ' ', texto)
+        texto = re.sub(r'([a-záéíóúñA-ZÁÉÍÓÚÑ])\s+([.,!?])', r'\1\2', texto)
+        texto = re.sub(r'([.,!?])\s*([a-záéíóúñ])', r'\1 \2', texto)
+        return texto
+    except Exception as e:
+        print(f"Error al puntuar el texto: {e}")
+        return texto
+
+def generar_resumen(texto):
+    try:
+        prompt = f"""Resume el siguiente texto en español manteniendo las ideas clave: {texto}"""
+        messages = [
+            {"role": "system", "content": "Eres un asistente que proporciona resúmenes de textos."},
+            {"role": "user", "content": prompt}
+        ]
+
+        text = qwen_tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True
+        )
+
+        model_inputs = qwen_tokenizer([text], return_tensors="pt").to(DEVICE)
+        generated_ids = qwen_model.generate(
+            model_inputs.input_ids,
+            max_new_tokens=512
+        )
+        generated_ids = [
+            output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
+        ]
+        resumen = qwen_tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+        return resumen
+        
+    except Exception as e:
+        print(f"Error al generar el resumen: {e}")
+        return None
 
 def procesar_video(video_url):
-    """
-    Procesa un video de YouTube: descarga el audio, transcribe, puntúa, resume y analiza.
-    Con logs detallados para debugging.
-    """
     try:
-        print("\n=== INICIANDO PROCESAMIENTO DEL VIDEO ===")
+        print("\n=== Intentando el flujo nuevo con YouTubeTranscriptApi ===")
+        analyzer = TextAnalyzer()
         
-        # Descargar el audio
-        print("\n1. Descargando audio...")
-        download_path = download_audio_yt_dlp(video_url)
-        if not download_path:
-            print("❌ Error: No se pudo descargar el audio")
-            return {"error": "Error al descargar el audio."}
-        print("✅ Audio descargado correctamente")
-
-        # Encuentra el archivo descargado
-        print("\n2. Buscando archivo de audio...")
-        audio_file = next((os.path.join(download_path, file) for file in os.listdir(download_path) if file.endswith(".wav")), None)
-        if not audio_file:
-            print("❌ Error: No se encontró el archivo WAV")
-            return {"error": "No se encontró el archivo de audio descargado."}
-        print(f"✅ Archivo de audio encontrado: {audio_file}")
-
-        # Transcribir el audio
-        print("\n3. Transcribiendo audio...")
-        transcription = transcribir_audio(audio_file)
+        transcription = obtener_transcripcion_youtube(video_url)
         if not transcription:
-            print("❌ Error: No se pudo transcribir el audio")
-            return {"error": "Error al transcribir el audio."}
-        print("\n=== TRANSCRIPCIÓN COMPLETA ===")
-        print(transcription)
-        print("✅ Audio transcrito correctamente")
+            print("No se pudo obtener la transcripción, iniciando flujo alternativo...")
+            return flujo_alternativo(video_url)
 
-        # Puntuación del texto transcrito
-        print("\n4. Puntuando texto...")
+        print("\nTranscripción obtenida correctamente.")
+
+        print("\nPuntuando texto...")
         puntuado_texto = puntuar_texto_en_espanol(transcription)
         if not puntuado_texto:
-            print("❌ Error: No se pudo puntuar el texto")
-            return {"error": "Error al puntuar el texto."}
-        print("\n=== TEXTO PUNTUADO ===")
-        print(puntuado_texto)
-        print("✅ Texto puntuado correctamente")
+            raise ValueError("No se pudo puntuar el texto correctamente.")
+        print("\nTexto puntuado correctamente.")
 
-        # Eliminar el archivo de audio descargado
-        print("\n5. Eliminando archivo de audio temporal...")
-        borrar_archivo(audio_file)
-        print("✅ Archivo de audio eliminado")
-
-        # Generar resumen
-        print("\n6. Generando resumen...")
-        resumen = generar_resumen_en_espanol(puntuado_texto)
+        print("\nGenerando resumen...")
+        resumen = generar_resumen(puntuado_texto)
         if not resumen:
-            print("❌ Error: No se pudo generar el resumen")
-            return {"error": "Error al generar el resumen."}
-        print("\n=== RESUMEN GENERADO ===")
-        print(resumen)
-        print("✅ Resumen generado correctamente")
+            raise ValueError("No se pudo generar el resumen correctamente.")
+        print("\nResumen generado correctamente.")
 
-        # Contar palabras y detectar marcas
-        print("\n7. Analizando texto...")
+        print("\nAnalizando texto...")
         wordcount = limpiar_y_contar(transcription)
-        if not wordcount:
-            print("❌ Error: No se pudo realizar el análisis de frecuencia de palabras")
-            return {"error": "Error al realizar el wordcount."}
-        
-        detected_brands = find_brands_in_transcription(transcription)
-        print("✅ Análisis de texto completado")
-        print("\n=== ESTADÍSTICAS ===")
-        
-        # Calcular total de palabras sumando las frecuencias
+        detected_brands = analyzer.find_brands_in_transcription(transcription)
         total_palabras = sum(frecuencia for palabra, frecuencia in wordcount)
         print(f"Total de palabras analizadas: {total_palabras}")
-        
-        print("\nPalabras más frecuentes:")
-        for palabra, frecuencia in wordcount:
-            print(f"- {palabra}: {frecuencia} veces")
-        
-        print(f"\nMarcas detectadas: {', '.join(detected_brands) if detected_brands else 'Ninguna'}")
-
-        print("\n=== PROCESAMIENTO COMPLETADO CON ÉXITO ===")
 
         return {
             "transcription": transcription,
@@ -449,8 +284,81 @@ def procesar_video(video_url):
         }
 
     except Exception as e:
-        print(f"\n❌ Error durante el procesamiento: {str(e)}")
-        print("Detalles del error:")
-        import traceback
-        print(traceback.format_exc())
+        print(f"\n❌ Error en el flujo nuevo: {str(e)}")
+        print("Intentando con el flujo alternativo...")
+        return flujo_alternativo(video_url)
+
+def flujo_alternativo(video_url):
+    try:
+        print("\n=== Iniciando flujo alternativo con descarga de audio ===")
+        analyzer = TextAnalyzer()
+        downloaded_files = []
+        
+        download_path = download_audio_yt_dlp(video_url)
+        if not download_path:
+            raise ValueError("Error al descargar el audio.")
+
+        wav_file = None
+        original_file = None
+        for file in os.listdir(download_path):
+            file_path = os.path.join(download_path, file)
+            if file.endswith(".wav"):
+                wav_file = file_path
+            elif file.endswith(".webm") or file.endswith(".m4a"):
+                original_file = file_path
+            if file_path:
+                downloaded_files.append(file_path)
+
+        if not wav_file:
+            raise ValueError("No se encontró el archivo WAV.")
+
+        print("\nTranscribiendo audio...")
+        transcription = transcribir_audio(wav_file)
+        if not transcription:
+            raise ValueError("Error al transcribir el audio.")
+
+        print("\nPuntuando texto...")
+        puntuado_texto = puntuar_texto_en_espanol(transcription)
+        if not puntuado_texto:
+            raise ValueError("Error al puntuar el texto.")
+
+        print("\nGenerando resumen...")
+        resumen = generar_resumen(puntuado_texto)
+        if not resumen:
+            raise ValueError("Error al generar el resumen.")
+
+        print("\nAnalizando texto...")
+        wordcount = limpiar_y_contar(transcription)
+        detected_brands = analyzer.find_brands_in_transcription(transcription)
+        total_palabras = sum(frecuencia for palabra, frecuencia in wordcount)
+
+        # Limpiar archivos después de procesar todo
+        for file_path in downloaded_files:
+            try:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    print(f"Archivo eliminado: {file_path}")
+            except Exception as e:
+                print(f"Error al eliminar archivo {file_path}: {e}")
+
+        return {
+            "transcription": transcription,
+            "punctuated_text": puntuado_texto,
+            "summary": resumen,
+            "wordcount": wordcount,
+            "brands": detected_brands,
+            "total_palabras": total_palabras,
+        }
+
+    except Exception as e:
+        # Limpiar archivos en caso de error
+        if 'downloaded_files' in locals():
+            for file_path in downloaded_files:
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except Exception as clean_error:
+                    print(f"Error al limpiar archivo {file_path}: {clean_error}")
+        
+        print(f"\n❌ Error en el flujo alternativo: {str(e)}")
         return {"error": str(e)}

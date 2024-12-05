@@ -25,6 +25,7 @@ try:
     # Inicializar el modelo y tokenizer
     model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(DEVICE)
     tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME)
+    
     logger.info("Modelo y tokenizer cargados exitosamente")
 except Exception as e:
     logger.error(f"Error al cargar el modelo: {str(e)}")
@@ -53,7 +54,7 @@ async def search_definition(request: SearchRequest):
         logger.info(f"Recibida solicitud de definición para: {request.term}")
         
         # Crear el prompt
-        prompt = f"Define {request.term} de forma breve y profesional."
+        prompt = f"Eres un experto en perfumería. Define {request.term} de forma breve y profesional en español."
         logger.info(f"Prompt generado: {prompt}")
         
         # Tokenizar

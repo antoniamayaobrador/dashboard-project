@@ -75,7 +75,13 @@ def limpiar_y_contar(texto, idioma="spanish"):
         print(f"Error al limpiar y contar palabras: {e}")
         return None
 
-PERFUME_BRANDS = [
+
+
+
+# En text_analysis.py
+class TextAnalyzer:
+    def __init__(self):
+        self.PERFUME_BRANDS = [
     # Marcas comerciales populares
     "Tom Ford", "Dior", "Chanel", "Gucci", "Yves Saint Laurent", "Versace", "Hermès", 
     "Prada", "Dolce & Gabbana", "Givenchy", "Burberry", "Armani", "Hugo Boss", "Calvin Klein",
@@ -98,18 +104,15 @@ PERFUME_BRANDS = [
     "House of Oud", "Olfactive Studio", "The Harmonist"
 ]
 
-def find_brands_in_transcription(transcription):
-    """
-    Busca marcas de perfumes en la transcripción.
-    """
-    detected_brands = []
-    transcription_lower = transcription.lower()
     
-    for brand in PERFUME_BRANDS:
-        # Comprobar si la marca aparece en la transcripción (ignorando mayúsculas/minúsculas)
-        if brand.lower() in transcription_lower:
-            detected_brands.append(brand)
+    def find_brands_in_transcription(self, transcription):
+        detected_brands = []
+        transcription_lower = transcription.lower()
+        
+        for brand in self.PERFUME_BRANDS:
+            if brand.lower() in transcription_lower:
+                detected_brands.append(brand)
+        
+        return detected_brands
     
-    return detected_brands
-
-
+   
