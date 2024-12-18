@@ -15,11 +15,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Device configuration
-DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 logger.info(f"Using device: {DEVICE}")
 
 # Model configuration
-MODEL_NAME = "abdulmannan-01/qwen-2.5-1.5b-finetuned-for-sql-generation"
+MODEL_NAME = "abdulmannan-01/qwen-2.5-3b-finetuned-for-sql-generation"  # Updated to your preferred model
 
 try:
     model = AutoModelForCausalLM.from_pretrained(MODEL_NAME).to(DEVICE)
@@ -51,15 +51,21 @@ def generate_sql_from_question(question: str) -> dict:
     """
     try:
         logger.info(f"Generating SQL query for question: {question}")
-        prompt = (
-            "You are a powerful text-to-SQL model. Given the SQL tables and natural language question, your job is to write SQL query that answers the question."
-            "The tables you can use and join are:\n\n"
-            "1. wordcount(word TEXT, count INT, video_id TEXT, created_at TIMESTAMP)\n"
-            "2. videos(video_id TEXT, channel_name TEXT, video_title TEXT, total_palabras INT, total_words INT, created_at TIMESTAMP)\n"
-            f"Question: {question}\n\n"
-            "SQL:"
-        )
+
+        # Formatear el prompt con los roles y la pregunta
+        messages = [
+            {"role": "system", "content": "You are a SQL query generator. Only output SQL queries, no explanations."},
+            {"role": "user", "content": f"Transform the following question into a SQL query using the given database schema:\n\n"
+                                         "1. wordcount(word TEXT, count INT, video_id TEXT, created_at TIMESTAMP)\n"
+                                         "2. videos(video_id TEXT, channel_name TEXT, video_title TEXT, total_palabras INT, total_words INT, created_at TIMESTAMP)\n\n"
+                                         f"Question: {question}"}
+        ]
+
+        # Generar el texto del prompt
+        prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
         logger.debug(f"Prompt created: {prompt}")
+
+        # Tokenizar y generar la salida
         inputs = tokenizer(prompt, return_tensors="pt").to(DEVICE)
         outputs = model.generate(
             **inputs,
@@ -70,11 +76,19 @@ def generate_sql_from_question(question: str) -> dict:
             repetition_penalty=1.2,
             early_stopping=True,
         )
-        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        raw_query = generated_text.split("SQL:")[-1].strip()
-        logger.debug(f"Raw SQL query: {raw_query}")
+
+        # Decodificar el texto generado
+        generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True).strip()
+
+        # Filtrar solo la consulta SQL
+        if "SQL:" in generated_text:
+            sql_query = generated_text.split("SQL:")[-1].strip()
+        else:
+            sql_query = generated_text  # Asumir que toda la respuesta es la consulta
+
+        logger.debug(f"Generated SQL query: {sql_query}")
         return {
-            "query": raw_query,
+            "query": sql_query,
             "prompt": prompt
         }
     except Exception as e:
@@ -100,12 +114,6 @@ def execute_sql_query(sql_query: str):
     """
     try:
         logger.info(f"Executing SQL query: {sql_query}")
-
-        # Verificar que sql_query es una cadena de texto
-        if not isinstance(sql_query, str):
-            logger.error(f"sql_query is not a string: {type(sql_query)}")
-            raise ValueError("SQL query must be a string.")
-
         conn = psycopg2.connect(**DATABASE_CONFIG)
         cursor = conn.cursor()
         cursor.execute(sql_query)
@@ -129,30 +137,23 @@ async def query_llm(request: QueryRequest):
 
         # Generar consulta SQL y prompt
         sql_result = generate_sql_from_question(request.question)
-        logger.debug(f"Generated SQL result: {sql_result}")  # Should be a dict with 'query' and 'prompt'
+        logger.debug(f"Generated SQL result: {sql_result}")
 
         # Sanear la consulta SQL
-        raw_query = sql_result.get("query")
+        raw_query = sql_result.get("query")  # Extraer solo la consulta SQL
         if not raw_query:
             logger.error("No query found in sql_result")
             raise ValueError("No SQL query generated.")
 
         sanitized_query = sanitize_sql_query(raw_query)
-        logger.debug(f"Sanitized SQL query: {sanitized_query}")  # Should be a string
-
-        # Verificar que sanitized_query es una cadena de texto
-        if not isinstance(sanitized_query, str):
-            logger.error(f"sanitized_query is not a string: {type(sanitized_query)}")
-            raise ValueError("Sanitized query is not a string.")
+        logger.debug(f"Sanitized SQL query: {sanitized_query}")
 
         # Ejecutar la consulta SQL saneada
         results = execute_sql_query(sanitized_query)
         logger.info(f"Final result from query execution: {results}")
 
-        # Retornar solo el resultado
         return {"results": results}
 
     except Exception as e:
         logger.error(f"Error in query process: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
-

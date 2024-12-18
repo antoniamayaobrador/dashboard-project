@@ -55,7 +55,7 @@ Crea un archivo .env con las siguientes variables:
 DATABASE_URL=postgresql://usuario:contraseña@localhost:5432/youtube_analysis
 
 Inicia el servidor backend:
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 
 Configuración Frontend
 Ve al directorio del frontend:

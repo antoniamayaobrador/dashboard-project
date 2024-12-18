@@ -2,8 +2,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Any
 from app.utils.youtube_api import fetch_channel_videos
-from app.utils.query_llm import generate_sql_from_question, execute_sql_query
-from app.utils.search_llm import router as search_router  # Importación correcta
+from app.utils.query_llm import (
+    generate_sql_from_question,
+    execute_sql_query,
+    sanitize_sql_query  
+)
+from app.utils.search_llm import router as search_router  
 from app.database.database_service import (
     get_wordcount_summary,
     get_historical_wordcount_by_channel,
@@ -161,19 +165,30 @@ import traceback
 @router.post("/api/query")
 async def query_llm(request: QueryRequest):
     try:
-        logger.info(f"Recibida pregunta: {request.question}")
-        
-        # Generar consulta SQL
-        sql_query = generate_sql_from_question(request.question)
-        
-        # Ejecutar consulta SQL
-        results = execute_sql_query(sql_query)
-        
-        return {"query": sql_query, "results": results, "prompt" : prompt}
+        logger.info(f"Received question: {request.question}")
+
+        # Generar consulta SQL y prompt
+        sql_result = generate_sql_from_question(request.question)
+        logger.debug(f"Generated SQL result: {sql_result}")
+
+        # Sanear la consulta SQL
+        raw_query = sql_result.get("query")  # Extraer solo la consulta SQL
+        if not raw_query:
+            logger.error("No query found in sql_result")
+            raise ValueError("No SQL query generated.")
+
+        sanitized_query = sanitize_sql_query(raw_query)
+        logger.debug(f"Sanitized SQL query: {sanitized_query}")
+
+        # Ejecutar la consulta SQL saneada
+        results = execute_sql_query(sanitized_query)
+        logger.info(f"Final result from query execution: {results}")
+
+        return {"results": results}
+
     except Exception as e:
-        logger.error(f"Error en el proceso de consulta: {str(e)}")
-        logger.debug(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Error interno: {str(e)}")
+        logger.error(f"Error in query process: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
 
 # Incluir las rutas del search_llm
 router.include_router(search_router, prefix="")
