@@ -17,38 +17,59 @@ from app.utils.text_analysis import limpiar_y_contar, TextAnalyzer
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Configuración de los modelos
-SMALL_CHAT_MODEL_CON_CASTELLANO = "Qwen/Qwen2-1.5B-Instruct"  # Asegúrate de que el nombre es correcto
-DEVICE = "cpu"  # Forzar uso de CPU
+SMALL_CHAT_MODEL_CON_CASTELLANO = "Qwen/Qwen2-1.5B-Instruct"
+DEVICE = "cpu"
 
-def init_models():
-    try:
-        print("Cargando modelo Qwen...")
-        qwen_model = AutoModelForCausalLM.from_pretrained(
-            SMALL_CHAT_MODEL_CON_CASTELLANO,
-            torch_dtype=torch.float32,
-            low_cpu_mem_usage=True,
-            device_map="auto"
-        ).to(DEVICE)
-        
-        print("Cargando tokenizer Qwen...")
-        qwen_tokenizer = AutoTokenizer.from_pretrained(SMALL_CHAT_MODEL_CON_CASTELLANO)
-        
-        if qwen_tokenizer.pad_token is None:
-            qwen_tokenizer.pad_token = qwen_tokenizer.eos_token
-            qwen_model.config.pad_token_id = qwen_model.config.eos_token_id
+# Optimizaciones de PyTorch
+torch.set_grad_enabled(False)
+torch.cuda.empty_cache()
+torch.backends.cudnn.benchmark = False
+torch.backends.cudnn.deterministic = True
 
-        print("Modelo y tokenizer inicializados correctamente.")
-        return qwen_model, qwen_tokenizer
-    except Exception as e:
-        print(f"❌ Error al inicializar modelos/tokenizer: {e}")
-        return None, None
+class ModelManager:
+    def __init__(self):
+        self.model = None
+        self.tokenizer = None
+        self.is_initialized = False
 
-# Inicialización global de modelos
-qwen_model, qwen_tokenizer = init_models()
+    def initialize(self):
+        try:
+            print("Cargando modelo Qwen...")
+            self.model = AutoModelForCausalLM.from_pretrained(
+                SMALL_CHAT_MODEL_CON_CASTELLANO,
+                torch_dtype=torch.float32,
+                low_cpu_mem_usage=True,
+                trust_remote_code=True,
+                device_map="cpu"
+            )
+            
+            print("Cargando tokenizer Qwen...")
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                SMALL_CHAT_MODEL_CON_CASTELLANO,
+                trust_remote_code=True
+            )
+            
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+                self.model.config.pad_token_id = self.model.config.eos_token_id
 
-# Verificación del modelo y tokenizador
-if not qwen_model or not qwen_tokenizer:
-    raise ValueError("El modelo o el tokenizer no se inicializaron correctamente.")
+            self.is_initialized = True
+            print("Modelo y tokenizer inicializados correctamente.")
+            return True
+        except Exception as e:
+            print(f"❌ Error al inicializar modelos/tokenizer: {str(e)}")
+            self.is_initialized = False
+            return False
+
+    def get_model_and_tokenizer(self):
+        if not self.is_initialized:
+            success = self.initialize()
+            if not success:
+                raise ValueError("No se pudo inicializar el modelo y tokenizer")
+        return self.model, self.tokenizer
+
+# Inicialización del gestor de modelos
+model_manager = ModelManager()
 
 def download_audio_yt_dlp(video_url):
     try:
@@ -73,7 +94,7 @@ def download_audio_yt_dlp(video_url):
 def transcribir_audio_whisper(audio_file):
     try:
         print("\nIniciando transcripción con Whisper...")
-        model = whisper.load_model("small", device="cpu")  # Forzar FP32 y CPU
+        model = whisper.load_model("small", device="cpu")
         
         print("Transcribiendo con Whisper...")
         result = model.transcribe(audio_file, language="es", task="transcribe")
@@ -112,34 +133,61 @@ def puntuar_texto_en_espanol(texto):
 
 def generar_resumen(texto):
     try:
+        # Get model and tokenizer from the manager
+        model, tokenizer = model_manager.get_model_and_tokenizer()
+        
         prompt = f"Resume el siguiente texto en español manteniendo las ideas clave: {texto}"
         messages = [
             {"role": "system", "content": "Eres un asistente que proporciona resúmenes de textos."},
             {"role": "user", "content": prompt}
         ]
 
-        text = qwen_tokenizer.apply_chat_template(
-            messages,
-            tokenize=False,
-            add_generation_prompt=True
-        )
+        with torch.no_grad():
+            text = tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True
+            )
 
-        model_inputs = qwen_tokenizer([text], return_tensors="pt").to(DEVICE)
-        generated_ids = qwen_model.generate(model_inputs.input_ids, max_new_tokens=512)
-        generated_ids = [
-            output_ids[len(input_ids):] for input_ids, output_ids in zip(model_inputs.input_ids, generated_ids)
-        ]
-        resumen = qwen_tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
-        return resumen
-        
+            # Fix: Properly handle the input encoding
+            inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True)
+            
+            # Move inputs to device if needed
+            inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
+            
+            # Generate summary
+            generated_ids = model.generate(
+                input_ids=inputs['input_ids'],
+                attention_mask=inputs['attention_mask'],
+                max_new_tokens=512,
+                do_sample=True,
+                temperature=0.7,
+                num_return_sequences=1,
+                pad_token_id=tokenizer.pad_token_id
+            )
+            
+            # Process only the new tokens (exclude input tokens)
+            generated_ids = generated_ids[:, inputs['input_ids'].shape[1]:]
+            
+            # Decode the generated text
+            resumen = tokenizer.batch_decode(generated_ids, skip_special_tokens=True)[0]
+            
+            return resumen.strip()
+            
     except Exception as e:
-        print(f"Error al generar el resumen: {e}")
+        print(f"Error al generar el resumen: {str(e)}")
+        traceback.print_exc()  # Add this to get more detailed error information
         return None
-
+    
 def procesar_video(video_url):
     try:
         print("\n=== Intentando el flujo con YouTubeTranscriptApi ===")
         analyzer = TextAnalyzer()
+        
+        # Initialize model manager if not already initialized
+        if not model_manager.is_initialized:
+            if not model_manager.initialize():
+                raise ValueError("No se pudo inicializar el modelo")
         
         transcription = obtener_transcripcion_youtube(video_url)
         if not transcription:

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.routes.main import router  # Solo importamos el router principal
+from app.routes.main import router  
 
 import os
 

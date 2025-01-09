@@ -54,7 +54,7 @@ def generate_sql_from_question(question: str) -> dict:
 
         # Formatear el prompt con los roles y la pregunta
         messages = [
-            {"role": "system", "content": "You are a SQL query generator. Only output SQL queries, no explanations."},
+            {"role": "system", "content": "You are a SQL query generator. Only output a SQL query, no explanations."},
             {"role": "user", "content": f"Transform the following question into a SQL query using the given database schema:\n\n"
                                          "1. wordcount(word TEXT, count INT, video_id TEXT, created_at TIMESTAMP)\n"
                                          "2. videos(video_id TEXT, channel_name TEXT, video_title TEXT, total_palabras INT, total_words INT, created_at TIMESTAMP)\n\n"
